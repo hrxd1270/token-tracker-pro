@@ -4,6 +4,193 @@
 
 ---
 
+## 📁 Claude Code 日志位置
+
+### macOS
+```bash
+~/Library/Logs/Claude/
+~/Library/Application Support/Claude/
+~/.claude/
+```
+
+### Linux
+```bash
+~/.config/Claude/
+~/.local/share/Claude/
+~/.claude/
+```
+
+### Windows
+```bash
+%APPDATA%\Claude\
+%LOCALAPPDATA%\Claude\
+```
+
+### 快速查找
+```bash
+# 查找所有 Claude 相关目录
+find ~ -name "*claude*" -type d 2>/dev/null
+
+# 查找包含 token 信息的文件
+find ~ -name "*.log" -o -name "*.json" 2>/dev/null | \
+  xargs grep -l "tokens\|anthropic\|claude" 2>/dev/null | head -20
+```
+
+---
+
+## 🔧 启用日志记录（重要）
+
+如果你还没有日志文件，可以使用以下方案自动记录：
+
+### 方案 1：使用包装器（推荐）⭐
+
+自动记录每次 Claude Code 调用的详细信息。
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/hrxd1270/token-tracker-pro.git
+cd token-tracker-pro/src
+
+# 2. 添加别名到 ~/.bashrc 或 ~/.zshrc
+echo 'alias claude-stat="python3 $(pwd)/claude-wrapper.py"' >> ~/.bashrc
+source ~/.bashrc
+
+# 3. 使用
+claude-stat "帮我写个函数"
+```
+
+**优点**：
+- ✅ 自动记录 token 使用、TTFT、速率等
+- ✅ 实时生成报告
+- ✅ 自动导入统计系统
+
+---
+
+### 方案 2：使用 tee 命令手动保存
+
+适合偶尔记录。
+
+```bash
+# 创建日志目录
+mkdir -p ~/Documents/ClaudeLogs
+
+# 使用 tee 保存输出
+claude "帮我写个函数" 2>&1 | tee ~/Documents/ClaudeLogs/$(date +%Y%m%d-%H%M%S).log
+
+# 或者创建别名
+echo 'alias claude-log="claude \"$@\" 2>&1 | tee -a ~/Documents/ClaudeLogs/$(date +%Y%m%d).log"' >> ~/.bashrc
+source ~/.bashrc
+
+# 使用
+claude-log "帮我写个函数"
+```
+
+---
+
+### 方案 3：设置环境变量 + Shell 函数
+
+自动记录所有 Claude 调用。
+
+```bash
+# 在 ~/.bashrc 或 ~/.zshrc 中添加
+
+# 1. 创建日志目录
+export CLAUDE_LOG_DIR=~/Documents/ClaudeLogs
+mkdir -p $CLAUDE_LOG_DIR
+
+# 2. 备份原始 claude 命令
+if [ -x "$(command -v claude)" ]; then
+    alias _claude_real=claude
+fi
+
+# 3. 创建包装函数
+claude() {
+    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local log_file="$CLAUDE_LOG_DIR/${timestamp}.log"
+    
+    # 执行并保存日志
+    _claude_real "$@" 2>&1 | tee "$log_file"
+    
+    # 自动导入统计（可选）
+    if [ -f ~/token-tracker-pro/src/claude-token-logger.py ]; then
+        python3 ~/token-tracker-pro/src/claude-token-logger.py \
+          --log "$log_file" \
+          --task "$1" \
+          2>/dev/null
+    fi
+}
+```
+
+---
+
+### 方案 4：Claude Code 配置文件
+
+如果使用 Claude Code CLI，可以配置输出格式。
+
+```bash
+# 创建或编辑配置文件
+mkdir -p ~/.claude
+cat > ~/.claude/config.json << 'EOF'
+{
+  "log": {
+    "enabled": true,
+    "directory": "~/Documents/ClaudeLogs",
+    "format": "json",
+    "include_tokens": true,
+    "include_timing": true
+  }
+}
+EOF
+```
+
+---
+
+### 方案 5：使用脚本包装器
+
+创建 `~/bin/claude-record`：
+
+```bash
+#!/bin/bash
+# ~/bin/claude-record - Claude Code 记录脚本
+
+LOG_DIR=~/Documents/ClaudeLogs
+mkdir -p "$LOG_DIR"
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+LOG_FILE="$LOG_DIR/${TIMESTAMP}.log"
+TASK="${1:-Claude Code}"
+
+echo "📝 任务：$TASK" | tee "$LOG_FILE"
+echo "⏰ 时间：$(date)" | tee -a "$LOG_FILE"
+echo "========================================" | tee -a "$LOG_FILE"
+
+# 执行 Claude Code
+claude "$@" 2>&1 | tee -a "$LOG_FILE"
+
+echo "" | tee -a "$LOG_FILE"
+echo "✅ 日志已保存：$LOG_FILE"
+
+# 可选：自动导入统计
+if [ -f ~/.openclaw/workspace/token-tracker/src/token-tracker-pro.py ]; then
+    python3 ~/.openclaw/workspace/token-tracker/src/claude-token-logger.py \
+      --log "$LOG_FILE" \
+      --task "$TASK" \
+      2>/dev/null
+fi
+```
+
+添加执行权限：
+```bash
+chmod +x ~/bin/claude-record
+```
+
+使用：
+```bash
+claude-record "帮我写个函数"
+```
+
+---
+
 ## 🚀 快速开始
 
 ### 1. 下载脚本
